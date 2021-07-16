@@ -1,0 +1,252 @@
+#### e-BH
+
+
+K = 500 #### total number of experiments  
+theta = 0.5 #### a parameter controlling the proportion of nulls, no larger than 1 
+mu = 0.5 #### signal strength
+delta = 1  #### martingale construction  
+n = 50  #### allowance for each experiment
+alpha = 0.05 #### e-BH FDR level 
+alpha2=uniroot(function(y){y*(1+log(1/y)) - alpha},lower=0.00001,upper=alpha)$root  #### adjusted threshold for compliant BH
+penalty = sum(1/(1:K)) ##### penalty paid by BY
+alpha3=alpha/penalty #### adjusted threshold for BY
+
+
+N=500 # repeat times!
+
+start_time <- Sys.time() 
+
+GG <- matrix(rep(0, len=16),nrow=4) ### Record final result
+AN <-0 #### average of nulls
+  
+ 
+MFDP <-rep(0,len=4) #### max FDP
+
+set.seed(5) 
+
+for (h in 1:N)
+{
+############# random 
+X=matrix(rnorm(K*n),nrow = K,ncol = n) ########## data 
+B=0
+Ex=rexp(K,1)
+#Ex=runif(K,0,2)
+#Ex=rep(1,len=K)
+signal =0
+Y <- matrix(rep( 0, len=K*n),nrow = K,ncol = n) ### Individual realizations
+for (k in 1:K){
+  B[k]=rbinom(1,1,theta*(K-k+1)/(K+1)) 
+  signal[k]=B[k]*mu
+  Y[k,] <- X[k,] +signal[k]*Ex[k]
+}
+#### generate e-values
+Y<-exp(Y*delta-delta^2/2)  
+
+nonnulls = sum(B)
+
+
+
+### Define the number of rejections of e-BH or BH using input e-values
+ReBH <- function(TE,alpha){
+  TEsort <- sort(TE,decreasing=FALSE)
+  RE <- 0 
+  k <-1
+  while (k <K+1)
+  {
+    if (TEsort[k]<K/alpha/(K-k+1))
+    {
+      k=k+1
+    }
+    else {
+      RE=K-k+1
+      k=K+1
+    }
+  }
+  return(RE)
+}
+
+
+Truedis <- function(TE,alpha,B){
+  TEnB <- rbind(TE,B)
+  TEnBsort <-  TEnB[,order(TEnB[1,],decreasing=TRUE)]
+  r <- ReBH(TE,alpha)
+  if (r == 0){return(0)}
+  else{return(sum(TEnBsort[2,1:r]))}
+}
+
+
+
+
+
+
+###### the martingale and its running max computed below. 
+
+SC=matrix(rep( 0, len=K*n),nrow = K,ncol = n) ### Score
+RM=matrix(rep( 0, len=K*n),nrow = K,ncol = n) ### running max
+
+
+for (j in 1:K){
+  S=1 #### S is the current score
+  Sr<-rep( 0, len=n) ##### running martingale 
+  for (i in 1:n)
+  {
+    S<-S*Y[j,i]
+    Sr[i] <- S 
+    SC[j,i] <- S 
+    RM[j,i] <- max(Sr)  
+  }   
+}  
+
+
+##### e-BH
+
+RE <-0 #### number of running rejections
+TE <- rep( 0, len=K) #### final score
+CE <- 0 #### count of used arms 
+
+
+
+##### BH, requires independence
+
+RH <-0 #### number of running rejections
+TH <- rep( 0, len=K) #### final score
+CH <- 0 #### count of used arms 
+truedisH <- 0 #### count of true discoveries
+
+
+##### BY
+
+RB <-0 #### number of running rejections
+TB <- rep( 0, len=K) #### final score
+CB <- 0 #### count of used arms  
+truedisB <- 0 #### count of true discoveries
+
+
+##### Compliant BH
+
+RcB <-0 #### number of running rejections
+TcB <- rep( 0, len=K) #### final score
+CcB <- 0 #### count of used arms  
+truediscB <- 0 #### count of true discoveries
+
+
+
+for (j in 1:K){ 
+  i <- 1 ###### e-BH
+  while (i < n+1){ 
+    TE[j] <- SC[j,i]
+    CE[j] <- i
+    i <- i+1 
+    r <- ReBH(TE,alpha)
+    if (RE < r) 
+    {
+      RE <- r
+      i<- n+1 
+    }
+    else {}
+  }
+  i <- 1 ######  BH
+  while (i < n+1){ 
+    TH[j] <- RM[j,i]
+    CH[j]<- i
+    i <- i+1 
+    r <- ReBH(TH,alpha)
+    if (RH < r) 
+    {
+      RH <- r
+      i<- n+1
+    }
+    else {} 
+  }
+  i <- 1 ######  BY
+  while (i < n+1){
+    TB[j] <- RM[j,i]
+    CB[j]<- i
+    i <- i+1 
+    r <- ReBH(TB,alpha3)
+    if (RB < r) 
+    {
+      RB <- r
+      i<- n+1
+    }
+    else {} 
+  } 
+  i <- 1 ###### Compliant BH
+  while (i < n+1){
+    TcB[j] <- RM[j,i]
+    CcB[j]<- i
+    i <- i+1 
+    r <- ReBH(TcB,alpha2)
+    if (RcB < r) 
+    {
+      RcB <- r
+      i<- n+1
+    }
+    else {} 
+  } 
+}  
+
+#sCE = sum(CE)/n/K
+#sCH = sum(CH)/n/K 
+#sCB = sum(CB)/n/K
+#sCcB = sum(CcB)/n/K
+
+sCE = (1- sum(CE)/n/K) 
+sCH = (1-sum(CH)/n/K ) 
+sCB = (1-sum(CB)/n/K) 
+sCcB = (1-sum(CcB)/n/K) 
+
+
+tdE <- Truedis(TE,alpha,B) #### count of true discoveries
+tdH <- Truedis(TH,alpha,B)
+tdB <- Truedis(TB,alpha3,B)
+tdcB <- Truedis(TcB,alpha2,B)
+
+#costE <- Truedis(TE,alpha,CE)/RE #### average cost
+#costH <- Truedis(TH,alpha,CH)/RH
+#costB <- Truedis(TB,alpha3,CB)/RB
+#costcB <- Truedis(TcB,alpha2,CcB)/RcB
+
+
+nonnulls
+
+### COMPARE
+
+### COMMENTED OUT ORIGINAL TABLE
+#G=t(matrix(c( 
+#RE,sCE,tdE, nonnulls, tdE/nonnulls, 1-tdE/max(RE,1),
+#RH, sCH, tdH, nonnulls, tdH/nonnulls, 1-tdH/max(RH,1),
+#RB, sCB, tdB, nonnulls, tdB/nonnulls, 1-tdB/max(RB,1),
+#RcB, sCcB, tdcB, nonnulls,tdcB/nonnulls, 1-tdcB/max(RcB,1) 
+#), nrow=6))
+#colnames(G) <- c("#dis", "%pull", "#TD","#NN", "TD/NN","FDP" )
+
+#rownames(G) <- c("e-BH", "BH", "BY","cBH" )
+
+G=t(matrix(c( 
+  RE,sCE*100,tdE,   ((RE-tdE)/max(RE,1))*100,
+  RH, sCH*100, tdH,  ((RH-tdH)/max(RH,1))*100,
+  RB, sCB*100, tdB,  ((RB-tdB)/max(RB,1))*100,
+  RcB, sCcB*100, tdcB,  ((RcB-tdcB)/max(RcB,1))*100
+), nrow=4))
+colnames(G) <- c("#dis", "RB%", "true","FDP%" )
+
+rownames(G) <- c("e-BH", "BH", "BY","cBH" )
+  
+GG <- GG+G ## summing results
+AN <-  AN + nonnulls ## summing results
+MFDP <- pmax(MFDP,G[,4])
+print(h)
+}
+GG<-t(round(t(GG/N),digit=c(1,2,1,2))) ## averaging
+AN<-AN/N  ## averaging  
+
+Para<-t(matrix(t(c("#NN","K", "n", "N","mu", "alpha", AN, K,n,N,mu,alpha)),nrow=6))
+  
+end_time <- Sys.time()
+end_time - start_time  
+
+GG 
+MFDP  
+Para
+ 
