@@ -15,6 +15,6 @@ R codes for the multi-armed bandit experiments
 
 R codes for correlated z-test simulations
 
-Data (in CSV) used for detecting coins with positive return 
+Data (in CSV) used for detecting coins with positive return from CoinGecko.com
 
 Results (in Excel) for detecting coins with positive return 
